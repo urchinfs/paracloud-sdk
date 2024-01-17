@@ -334,7 +334,7 @@ func (c *client) refreshVolumeCache(ctx context.Context) (webDavInfo, error) {
 	}
 
 	//- sleep for creation environment
-	time.Sleep(time.Second * 5)
+	time.Sleep(time.Second * 10)
 	return volume, nil
 }
 
