@@ -328,6 +328,7 @@ func (c *client) refreshVolumeCache(ctx context.Context) (webDavInfo, error) {
 	values["username"] = volume.username
 	values["password"] = volume.password
 	values["url"] = volume.url
+	values["createTime"] = time.Now().Unix()
 	err = c.redisStorage.SetMapElements(volumeKey, values)
 	if err != nil {
 		return webDavInfo{}, err
@@ -344,6 +345,10 @@ func (c *client) createClusterVolume(ctx context.Context) (webDavInfo, error) {
 		return webDavInfo{}, err
 	}
 
+	volumeConf := c.redisStorage.MakeStorageKey([]string{}, types.StoragePrefixParaCloudConfig)
+	confClusterID, _ := c.redisStorage.GetMapElement(volumeConf, "clusterID")
+	confAccountID, _ := c.redisStorage.GetMapElement(volumeConf, "accountID")
+
 	resp := &GetClusterAccountResp{}
 	urlPath := fmt.Sprintf("/api/v1rc1/clusters/-/accounts")
 	err = c.sendHttpRequest(ctx, types.HttpMethodGet, urlPath, "", resp)
@@ -358,14 +363,14 @@ func (c *client) createClusterVolume(ctx context.Context) (webDavInfo, error) {
 	clusterID := ""
 	accountID := ""
 	for _, item := range resp.List {
-		if item.ClusterID == "NC-N30" {
+		if item.ClusterID == confClusterID && item.AccountID == confAccountID {
 			clusterID = item.ClusterID
 			accountID = item.AccountID
 			break
 		}
 	}
-	if clusterID == "" {
-		return webDavInfo{}, errors.New("can not get cluster id")
+	if clusterID == "" || accountID == "" {
+		return webDavInfo{}, errors.New("can not get cluster or account id")
 	}
 
 	reqVol := CreateVolumeReq{}
@@ -420,9 +425,6 @@ func (c *client) removeClusterVolume(ctx context.Context, clusterID, accountID, 
 	if err != nil {
 		return err
 	}
-
-	volumeKey := c.redisStorage.MakeStorageKey([]string{c.urchinCacheHashKey}, types.StoragePrefixParaCloudVolume)
-	_ = c.redisStorage.Del(volumeKey)
 
 	return nil
 }

@@ -35,6 +35,7 @@ const (
 	StoragePrefix                = "urchin"
 	StoragePrefixParaCloudVolume = "urchin:storage:paraCloud:webdav"
 	StoragePrefixParaCloudToken  = "urchin:storage:paraCloud:token"
+	StoragePrefixParaCloudConfig = "urchin:storage:paraCloud:config"
 )
 
 const (
