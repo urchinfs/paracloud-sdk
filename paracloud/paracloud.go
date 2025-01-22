@@ -29,7 +29,7 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"path/filepath"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -273,7 +273,7 @@ func (c *client) refreshToken(ctx context.Context) error {
 	tokenKey := c.redisStorage.MakeStorageKey([]string{}, types.StoragePrefixParaCloudToken)
 	value, err := c.redisStorage.Get(tokenKey)
 	if err != nil {
-		if err == types.ErrorNotExists {
+		if errors.Is(err, types.ErrorNotExists) {
 			token, err := c.getToken(ctx, c.username, c.password)
 			if err != nil {
 				return err
@@ -478,7 +478,7 @@ func (c *client) StatFile(ctx context.Context, bucketName, fileName string) (Fil
 	}
 
 	webdavClient := gowebdav.NewClient(volume.url, volume.username, volume.password)
-	stat, err := webdavClient.Stat(filepath.Join(bucketName, fileName))
+	stat, err := webdavClient.Stat(path.Join(bucketName, fileName))
 	if err != nil {
 		return FileInfo{}, err
 	}
@@ -491,6 +491,7 @@ func (c *client) StatFile(ctx context.Context, bucketName, fileName string) (Fil
 		Key:          fileName,
 		Size:         stat.Size(),
 		LastModified: stat.ModTime(),
+		ContentType:  stat.(*gowebdav.File).ContentType(),
 	}, nil
 }
 
@@ -501,7 +502,7 @@ func (c *client) UploadFile(ctx context.Context, bucketName, fileName, digest st
 	}
 
 	webdavClient := gowebdav.NewClient(volume.url, volume.username, volume.password)
-	err = webdavClient.WriteStream(filepath.Join(bucketName, fileName), reader, types.DefaultFileMode)
+	err = webdavClient.WriteStream(path.Join(bucketName, fileName), reader, types.DefaultFileMode)
 	if err != nil {
 		return err
 	}
@@ -516,7 +517,7 @@ func (c *client) DownloadFile(ctx context.Context, bucketName, fileName string) 
 	}
 
 	webdavClient := gowebdav.NewClient(volume.url, volume.username, volume.password)
-	stream, err := webdavClient.ReadStream(filepath.Join(bucketName, fileName))
+	stream, err := webdavClient.ReadStream(path.Join(bucketName, fileName))
 	if err != nil {
 		return nil, err
 	}
@@ -531,7 +532,7 @@ func (c *client) RemoveFile(ctx context.Context, bucketName, fileName string) er
 	}
 
 	webdavClient := gowebdav.NewClient(volume.url, volume.username, volume.password)
-	err = webdavClient.Remove(filepath.Join(bucketName, fileName))
+	err = webdavClient.Remove(path.Join(bucketName, fileName))
 	if err != nil {
 		return err
 	}
@@ -562,7 +563,7 @@ func (c *client) ListFiles(ctx context.Context, bucketName, prefix, marker strin
 
 	webdavClient := gowebdav.NewClient(volume.url, volume.username, volume.password)
 	var objects []*FileInfo
-	files, err := webdavClient.ReadDir(filepath.Join(bucketName, prefix))
+	files, err := webdavClient.ReadDir(path.Join(bucketName, prefix))
 	if err != nil {
 		return nil, err
 	}
@@ -578,13 +579,13 @@ func (c *client) ListFiles(ctx context.Context, bucketName, prefix, marker strin
 	return objects, nil
 }
 
-func (c *client) listDirObjs(ctx context.Context, bucketName, path string, wc *gowebdav.Client) ([]*FileInfo, error) {
-	if path == "." || path == ".." {
+func (c *client) listDirObjs(ctx context.Context, bucketName, dirPath string, wc *gowebdav.Client) ([]*FileInfo, error) {
+	if dirPath == "." || dirPath == ".." {
 		return nil, nil
 	}
 
 	var objects []*FileInfo
-	files, err := wc.ReadDir(filepath.Join(bucketName, path))
+	files, err := wc.ReadDir(path.Join(bucketName, dirPath))
 	if err != nil {
 		return nil, err
 	}
@@ -592,12 +593,12 @@ func (c *client) listDirObjs(ctx context.Context, bucketName, path string, wc *g
 	for _, file := range files {
 		if !file.IsDir() {
 			objects = append(objects, &FileInfo{
-				Key:          filepath.Join(path, file.Name()),
+				Key:          path.Join(dirPath, file.Name()),
 				Size:         file.Size(),
 				LastModified: file.ModTime(),
 			})
 		} else {
-			tmpObjs, err := c.listDirObjs(ctx, bucketName, filepath.Join(path, file.Name()), wc)
+			tmpObjs, err := c.listDirObjs(ctx, bucketName, path.Join(dirPath, file.Name()), wc)
 			if err != nil {
 				return nil, err
 			}
@@ -638,12 +639,12 @@ func (c *client) IsFileExist(ctx context.Context, bucketName, fileName string) (
 	}
 
 	webdavClient := gowebdav.NewClient(volume.url, volume.username, volume.password)
-	stat, err := webdavClient.Stat(filepath.Join(bucketName, fileName))
+	stat, err := webdavClient.Stat(path.Join(bucketName, fileName))
 	if err != nil {
 		return false, err
 	}
 
-	if !stat.IsDir() && stat.Name() == filepath.Base(fileName) {
+	if !stat.IsDir() && stat.Name() == path.Base(fileName) {
 		return true, nil
 	}
 
@@ -671,7 +672,7 @@ func (c *client) CreateDir(ctx context.Context, bucketName, folderName string) e
 	}
 
 	webdavClient := gowebdav.NewClient(volume.url, volume.username, volume.password)
-	err = webdavClient.MkdirAll(filepath.Join(bucketName, folderName), types.DefaultFileMode)
+	err = webdavClient.MkdirAll(path.Join(bucketName, folderName), types.DefaultFileMode)
 	if err != nil {
 		return err
 	}
@@ -686,12 +687,12 @@ func (c *client) GetDirMetadata(ctx context.Context, bucketName, folderKey strin
 	}
 
 	webdavClient := gowebdav.NewClient(volume.url, volume.username, volume.password)
-	stat, err := webdavClient.Stat(filepath.Join(bucketName, folderKey))
+	stat, err := webdavClient.Stat(path.Join(bucketName, folderKey))
 	if err != nil {
 		return nil, false, err
 	}
 
-	if !stat.IsDir() || stat.Name() != filepath.Base(folderKey) {
+	if !stat.IsDir() || stat.Name() != path.Base(folderKey) {
 		return nil, false, errors.New("noSuchKey")
 	}
 
